@@ -1,4 +1,4 @@
-from datetime import date
+from email.policy import default
 from openpyxl import load_workbook
 import PySimpleGUI as sg
 from os import getcwd
@@ -13,6 +13,19 @@ def convert_number_alpha(intValue):
     letra = letras[Value]
     return letra
 
+class Historico_de_Gastos():
+    def __init__(self):
+        self.path = base_path + '\\Histórico de Gastos.txt'
+
+    def addHistorico(self,date,cost,costCategorie,costName=''):
+        self.txt = open(self.path,'at')
+
+        self.txt.write(f'{date[2]}-{date[0]:0>2}-{date[1]:0>2}, {costCategorie}, {costName}, {cost}\n')
+
+        self.txt.close() 
+
+historico = Historico_de_Gastos()
+
 class Planilha():
     def __init__(self):
         self.path = base_path + '\\Rendimento Mensal Familiar Automatizado.xlsx'
@@ -23,7 +36,6 @@ class Planilha():
         self.contas = []
         self.data = []
         self.linha_Planilha = 0
-        self.valores_fixos = []
         self.cordenadas = []
 
         for rows in self.Gastos_Anuais.rows:
@@ -38,7 +50,6 @@ class Planilha():
         for linhas in self.Projecao_Planilha:
             if self.linha_Planilha > 1 and self.linha_Planilha < self.planilha_size - 1:
                 self.contas.append(linhas[0])
-                self.valores_fixos.append(['Selecionar'])
             self.linha_Planilha += 1
 
         self.linha_Planilha = 0
@@ -60,16 +71,9 @@ class Planilha():
     def adicionar(self,data,contas,linhaConta,month):
         addValor = 0
 
-        if data['Select_Adicionar_Valor_'+f'{contas}'] and str(data['Adicionar_valor_' + f'{contas}']).strip().replace('.','').replace(',','').isnumeric():
+        if str(data['Adicionar_valor_' + f'{contas}']).strip().replace('.','').replace(',','').isnumeric():
             try:
                 addValor = float(str(data['Adicionar_valor_' + f'{contas}']).strip().replace(',','.'))
-            
-            except:
-                addValor = 0
-
-        elif data['Select_Adicionar_Valor_'+f'{contas}'] == False and str(data['Valor_fixo_'+f'{contas}']).replace('.','').replace(',','').isnumeric():
-            try:
-                addValor = float(str(data['Valor_fixo_'+f'{contas}']).strip().replace(',','.'))
             
             except:
                 addValor = 0
@@ -83,6 +87,9 @@ class Planilha():
 
         self.excelUpdateData()
 
+        if addValor != 0:
+            historico.addHistorico(screen.date,addValor,contas,data['Nome_Gasto_'+f'{contas}'])
+
 planilha = Planilha()
 
 class Window():
@@ -94,7 +101,7 @@ class Window():
         self.month = localtime().tm_mon
         self.day = localtime().tm_mday
 
-        self.date = ()
+        self.date = (self.month,self.day,self.year)
 
         # Layout
         sg.theme('DarkAmber')
@@ -128,22 +135,11 @@ class Window():
     def update(self):
         self.event, self.values = self.window.read()
 
-    def update2(self,contas):
-        if self.value2["Select_Adicionar_Valor_"+f"{contas}"] != None:
-            if self.value2['Select_Adicionar_Valor_'+f'{contas}']:
-                self.window_2['Adicionar_valor_' + f'{contas}'].update(disabled=False)
-                self.window_2['Tornar_Fixo_'+f'{contas}'].update(disabled=False)
-                self.window_2['Valor_fixo_'+f'{contas}'].update(disabled=True)
-            
-            else:
-                self.window_2['Adicionar_valor_' + f'{contas}'].update(disabled=True)
-                self.window_2['Tornar_Fixo_'+f'{contas}'].update(disabled=True)
-                self.window_2['Valor_fixo_'+f'{contas}'].update(disabled=False)
-
     def update3(self,contas):
         self.window.Element('Valor_'+f'{contas}').Update(f'{planilha.data[linhaConta][screen.month - 1]:>9}')
         self.window_2.Element('Valor_Atual'+f'{contas}').Update(f'{f"{planilha.data[linhaConta][screen.month - 1]}":^115}')
         self.window_2.Element('Adicionar_valor_' + f'{contas}').Update('')
+        self.window_2.Element('Nome_Gasto_' + f'{contas}').Update('')
 
     def dateChange(self):
         self.date = sg.popup_get_date(title='Escolha uma Data')
@@ -186,8 +182,7 @@ while True:
                 [sg.Text(f'{f"{planilha.data[linhaConta][screen.month - 1]}":^115}',font=100,key='Valor_Atual'+f'{contas}')],
                 [sg.Text('')],
                 [sg.Text('Nome do Gasto (opcional): ',auto_size_text=True),sg.Input(size=(20,0),key='Nome_Gasto_'+f'{contas}')],
-                [sg.Radio('Adicionar Valor:','Values',default=True,key='Select_Adicionar_Valor_'+f'{contas}'),sg.Text('   R$'),sg.Input(key='Adicionar_valor_' + f'{contas}',size=(10,0)),sg.Text('     '),sg.Checkbox('Tornar Fixo',key='Tornar_Fixo_'+f'{contas}')],
-                [sg.Radio(f'{"Valor Fixo:":<18}','Values',key='Select_Valor_Fixo_'+f'{contas}'),sg.Text('   R$'),sg.Combo(planilha.valores_fixos[linhaConta],default_value='Selecionar',size=(10,0),key='Valor_fixo_'+f'{contas}',disabled=True)],
+                [sg.Text('Adicionar Valor:',key='Select_Adicionar_Valor_'+f'{contas}'),sg.Text('         R$'),sg.Input(key='Adicionar_valor_' + f'{contas}',size=(10,0))],
                 [sg.Button('Adicionar',auto_size_button=True,key='add_'+f'{contas}'),sg.Text('  '),sg.Button('Voltar',auto_size_button=True,key='voltar_'+f'{contas}')]
             ]
 
@@ -205,9 +200,6 @@ while True:
                 if screen.event2 == 'add_'+f'{contas}' or screen.event2.strip() == '' and screen.event2 != ' ':
                     planilha.adicionar(screen.value2,contas,linhaConta,screen.month)
                     screen.update3(contas)
-
-                if controle:
-                    screen.update2(contas)
 
             screen.window_2.close()
             screen.window.un_hide()
